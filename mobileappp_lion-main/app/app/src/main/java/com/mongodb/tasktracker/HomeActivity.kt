@@ -18,9 +18,12 @@ import java.util.Date
 class HomeActivity : AppCompatActivity() {
     private lateinit var binding: ActivityHomeBinding
     private lateinit var app: App
+
     private var studentName: String? = null
     private var studentEmail: String? = null
     private var departmentName: String? = null
+    private var studentId: ObjectId? = null
+
 
     private var coursesInfo: List<CourseInfo>? = null
     private var slotsData: List<SlotInfo>? = null
@@ -65,7 +68,9 @@ class HomeActivity : AppCompatActivity() {
         val mongoClient = app.currentUser()?.getMongoClient("mongodb-atlas")
         val database = mongoClient?.getDatabase("finalProject")
         Log.d("checked", "Attempting to fetch student data for email: $userEmail")
+
         database?.getCollection("Students")?.findOne(Document("email", userEmail))?.getAsync { task ->
+
             if (task.isSuccess) {
                 val studentDocument = task.get()
                 Log.d("checked", "Successfully fetched student data: ${studentDocument?.toJson()}")
@@ -74,6 +79,7 @@ class HomeActivity : AppCompatActivity() {
                 studentName = studentDocument?.getString("name")
                 this.studentEmail = studentDocument?.getString("email")
                 val departmentId = studentDocument?.getObjectId("departmentId")
+                this.studentId = studentDocument?.getObjectId("_id")
 
                 if (departmentId != null) {
                     Log.d("checked", "Fetching department data for ID: $departmentId")
@@ -103,7 +109,6 @@ class HomeActivity : AppCompatActivity() {
             }
         }
     }
-
 
     //fetch Department from data
     private fun fetchDepartmentData(departmentId: ObjectId) {
@@ -174,7 +179,6 @@ class HomeActivity : AppCompatActivity() {
         }
     }
 
-
     private fun checkAndPassCourses(coursesInfo: List<CourseInfo>, totalCourses: Int) {
         if (coursesInfo.size == totalCourses) {
             passCoursesToFragment(coursesInfo)
@@ -235,6 +239,8 @@ class HomeActivity : AppCompatActivity() {
     private fun fetchCoursesAndSlots(courseIds: List<ObjectId>, termId: ObjectId) {
         val mongoClient = app.currentUser()?.getMongoClient("mongodb-atlas")
         val database = mongoClient?.getDatabase("finalProject")
+
+        Log.d("fetchCoursesAndSlots", "Start fetching slots with termId: $termId and courseIds: $courseIds")
         val slotsCollection = database?.getCollection("Slots")
 
         Log.d("fetchCoursesAndSlots", "Fetching slots for termId: $termId and courseIds: $courseIds")
@@ -255,7 +261,6 @@ class HomeActivity : AppCompatActivity() {
                     val slotId = document.getObjectId("_id").toString()
                     val courseId = document.getObjectId("courseId").toString()
 
-                    // Log để kiểm tra xem courseId có được lấy chính xác không
                     Log.d("SlotDetail", "Processing slot $slotId for courseId $courseId")
 
                     // Kiểm tra xem courseId có tồn tại trong courseTitlesMap không
@@ -283,12 +288,14 @@ class HomeActivity : AppCompatActivity() {
                 Log.d("fetchCoursesAndSlots1", "Fetched slots: ${slots.size}")
 
                 // Tiếp tục với việc lấy thông tin tòa nhà
-                fetchBuildingForSlots(slots, termId) { updatedSlots ->
-                    slotsData = updatedSlots
-                    runOnUiThread {
-                        // Gửi dữ liệu slots đã cập nhật đến UI
-                        Log.d("fetchCoursesAndSlots1", "Updated UI with slots and buildings information")
-                        sendSlotsDataToInterfaceFragment(updatedSlots)
+                fetchAttendanceRecordsForSlots(slots, termId) { slotsWithAttendance ->
+                    // Bước 3: Thêm thông tin tòa nhà cho từng slot đã có thông tin điểm danh
+                    fetchBuildingForSlots(slotsWithAttendance, termId) { fullyUpdatedSlots ->
+                        slotsData = fullyUpdatedSlots
+                        runOnUiThread {
+                            // Gửi dữ liệu đã cập nhật đến UI
+                            sendSlotsDataToInterfaceFragment(fullyUpdatedSlots)
+                        }
                     }
                 }
             } else {
@@ -324,6 +331,41 @@ class HomeActivity : AppCompatActivity() {
                 callbackCount++
                 if (callbackCount == slots.size) {
                     completion(updatedSlots)
+                }
+            }
+        }
+    }
+    private fun fetchAttendanceRecordsForSlots(slots: List<SlotInfo>, termId: ObjectId, completion: (List<SlotInfo>) -> Unit) {
+        // Đảm bảo có studentId để truy vấn
+        val studentId = this.studentId ?: return
+        Log.e("AttendanceError", "Student ID is null")
+
+        val attendanceCollection = app.currentUser()?.getMongoClient("mongodb-atlas")?.getDatabase("finalProject")?.getCollection("Attendance")
+        var processedCount = 0
+
+        slots.forEach { slot ->
+            val query = Document("\$and", listOf(
+                Document("studentId", studentId),
+                Document("courseId", Document("\$oid", slot.courseId)),
+                Document("termId", termId),
+                Document("slotId", Document("\$oid", slot.slotId))
+            ))
+            Log.d("AttendanceQuery", "Querying attendance for slotId: ${slot.slotId}")
+
+            attendanceCollection?.findOne(query)?.getAsync { task ->
+                if (task.isSuccess) {
+                    val attendanceRecord = task.get()
+                    Log.d("AttendanceResult", "Attendance found for slotId: ${slot.slotId}")
+                    slot.attendanceDate = attendanceRecord?.getDate("date")?.toString()
+                    slot.attendanceStatus = attendanceRecord?.getString("status")
+                } else {
+                    Log.e("fetchAttendanceRecords", "Error fetching attendance record: ${task.error}")
+                }
+
+                // Kiểm tra xem đã xử lý xong tất cả slots chưa
+                processedCount++
+                if (processedCount == slots.size) {
+                    completion(slots)
                 }
             }
         }

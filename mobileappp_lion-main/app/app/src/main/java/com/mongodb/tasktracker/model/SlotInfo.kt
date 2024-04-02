@@ -9,5 +9,7 @@ data class SlotInfo(
     val day: String,
     val courseId: String,
     val courseTitle: String, // Tiêu đề của khóa học từ Collection `Courses`
-    var building: String? = null // Khởi tạo giá trị mặc định là null cho building.
+    var building: String? = null, // Khởi tạo giá trị mặc định là null cho building.
+    var attendanceStatus: String? = null, // Trạng thái điểm danh
+    var attendanceDate: String? = null // Ngày điểm danh
 ) : Serializable

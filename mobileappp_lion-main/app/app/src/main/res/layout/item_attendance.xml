@@ -151,8 +151,8 @@
         android:id="@+id/textView7"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:layout_marginStart="196dp"
-        android:layout_marginTop="172dp"
+        android:layout_marginStart="184dp"
+        android:layout_marginTop="84dp"
         android:text="Day:"
         android:textSize="25dp"
         app:layout_constraintStart_toStartOf="@+id/rectangle_1"
@@ -160,8 +160,8 @@
 
     <TextView
         android:id="@+id/date_data"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_width="130dp"
+        android:layout_height="150dp"
         android:layout_marginStart="172dp"
         android:layout_marginTop="4dp"
         android:text=""

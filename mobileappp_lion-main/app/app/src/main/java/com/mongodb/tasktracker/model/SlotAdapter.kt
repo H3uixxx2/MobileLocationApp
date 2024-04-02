@@ -15,6 +15,8 @@ class SlotAdapter(private var slots: List<SlotInfo>) : RecyclerView.Adapter<Slot
         private val startTextView: TextView = view.findViewById(R.id.start_data)
         private val endTextView: TextView = view.findViewById(R.id.end_data)
         private val buildingTextView: TextView = view.findViewById(R.id.building_data) // TextView cho thông tin tòa nhà
+        private val statusTextView: TextView = view.findViewById(R.id.Status_data)
+        private val dateTextView: TextView = view.findViewById(R.id.date_data)
 
         fun bind(slot: SlotInfo) {
             titleTextView.text = slot.courseTitle
@@ -22,6 +24,8 @@ class SlotAdapter(private var slots: List<SlotInfo>) : RecyclerView.Adapter<Slot
             startTextView.text = slot.startTime
             endTextView.text = slot.endTime
             buildingTextView.text = slot.building // Hiển thị thông tin tòa nhà
+            statusTextView.text = slot.attendanceStatus ?: "N/A"
+            dateTextView.text = slot.attendanceDate ?: "N/A"
         }
     }
 
