@@ -35,5 +35,6 @@ class InterfaceFragment : Fragment() {
         val data = slotsData ?: arguments?.getSerializable("slotsData") as? List<SlotInfo> ?: return
         slotAdapter.updateSlots(data)
     }
+
 }
 

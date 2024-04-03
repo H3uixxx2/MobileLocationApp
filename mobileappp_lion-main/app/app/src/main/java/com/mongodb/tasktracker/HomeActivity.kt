@@ -13,6 +13,7 @@ import io.realm.mongodb.App
 import io.realm.mongodb.AppConfiguration
 import org.bson.Document
 import org.bson.types.ObjectId
+import java.text.SimpleDateFormat
 import java.util.Date
 
 class HomeActivity : AppCompatActivity() {
@@ -294,7 +295,7 @@ class HomeActivity : AppCompatActivity() {
                         slotsData = fullyUpdatedSlots
                         runOnUiThread {
                             // Gửi dữ liệu đã cập nhật đến UI
-                            sendSlotsDataToInterfaceFragment(fullyUpdatedSlots)
+                            sendSlotsDataToInterfaceFragment(slotsWithAttendance)
                         }
                     }
                 }
@@ -335,12 +336,19 @@ class HomeActivity : AppCompatActivity() {
             }
         }
     }
+
     private fun fetchAttendanceRecordsForSlots(slots: List<SlotInfo>, termId: ObjectId, completion: (List<SlotInfo>) -> Unit) {
         // Đảm bảo có studentId để truy vấn
-        val studentId = this.studentId ?: return
-        Log.e("AttendanceError", "Student ID is null")
+        val studentId = this.studentId
+        if (studentId == null) {
+            Log.e("AttendanceError", "Student ID is null")
+            return // Dừng xử lý nếu studentId là null
+        }
 
         val attendanceCollection = app.currentUser()?.getMongoClient("mongodb-atlas")?.getDatabase("finalProject")?.getCollection("Attendance")
+        val slotsWithAttendance = mutableListOf<SlotInfo>()
+        val specifiedDate = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX").parse("2024-03-01T00:00:00.000+00:00")
+
         var processedCount = 0
 
         slots.forEach { slot ->
@@ -350,22 +358,30 @@ class HomeActivity : AppCompatActivity() {
                 Document("termId", termId),
                 Document("slotId", Document("\$oid", slot.slotId))
             ))
-            Log.d("AttendanceQuery", "Querying attendance for slotId: ${slot.slotId}")
+            Log.d("AttendanceQuery", "Querying attendance for SlotID: ${slot.slotId}, CourseID: ${slot.courseId}, StudentID: $studentId, TermID: $termId")
 
             attendanceCollection?.findOne(query)?.getAsync { task ->
                 if (task.isSuccess) {
                     val attendanceRecord = task.get()
+                    val attendanceDate = attendanceRecord?.getDate("date")
                     Log.d("AttendanceResult", "Attendance found for slotId: ${slot.slotId}")
-                    slot.attendanceDate = attendanceRecord?.getDate("date")?.toString()
-                    slot.attendanceStatus = attendanceRecord?.getString("status")
+
+                    if (attendanceDate != null && attendanceDate == specifiedDate) {
+                        slot.attendanceDate = SimpleDateFormat("dd/MM/yyyy").format(attendanceDate)
+                        slot.attendanceStatus = attendanceRecord.getString("status")
+                        slotsWithAttendance.add(slot)
+                    } else {
+                        slot.attendanceStatus = "not yet!"
+                        slotsWithAttendance.add(slot)
+                    }
                 } else {
                     Log.e("fetchAttendanceRecords", "Error fetching attendance record: ${task.error}")
                 }
 
-                // Kiểm tra xem đã xử lý xong tất cả slots chưa
                 processedCount++
-                if (processedCount == slots.size) {
-                    completion(slots)
+                // Kiểm tra xem đã xử lý xong tất cả slots chưa
+                if (slotsWithAttendance.size == slots.size) {
+                    completion(slotsWithAttendance)
                 }
             }
         }
