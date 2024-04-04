@@ -14,7 +14,9 @@ import io.realm.mongodb.AppConfiguration
 import org.bson.Document
 import org.bson.types.ObjectId
 import java.text.SimpleDateFormat
+import java.util.Calendar
 import java.util.Date
+import java.util.Locale
 
 class HomeActivity : AppCompatActivity() {
     private lateinit var binding: ActivityHomeBinding
@@ -295,7 +297,7 @@ class HomeActivity : AppCompatActivity() {
                         slotsData = fullyUpdatedSlots
                         runOnUiThread {
                             // Gửi dữ liệu đã cập nhật đến UI
-                            sendSlotsDataToInterfaceFragment(slotsWithAttendance)
+                            sendSlotsDataToInterfaceFragment(fullyUpdatedSlots)
                         }
                     }
                 }
@@ -347,9 +349,7 @@ class HomeActivity : AppCompatActivity() {
 
         val attendanceCollection = app.currentUser()?.getMongoClient("mongodb-atlas")?.getDatabase("finalProject")?.getCollection("Attendance")
         val slotsWithAttendance = mutableListOf<SlotInfo>()
-        val specifiedDate = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX").parse("2024-03-01T00:00:00.000+00:00")
-
-        var processedCount = 0
+        val specifiedDate = Date() // Sử dụng ngày hiện tại
 
         slots.forEach { slot ->
             val query = Document("\$and", listOf(
@@ -363,28 +363,46 @@ class HomeActivity : AppCompatActivity() {
             attendanceCollection?.findOne(query)?.getAsync { task ->
                 if (task.isSuccess) {
                     val attendanceRecord = task.get()
-                    val attendanceDate = attendanceRecord?.getDate("date")
-                    Log.d("AttendanceResult", "Attendance found for slotId: ${slot.slotId}")
 
-                    if (attendanceDate != null && attendanceDate == specifiedDate) {
+                    Log.d("AttendanceResult", "Attendance record found - SlotID: ${slot.slotId}, CourseID: ${slot.courseId}, StudentID: $studentId, Status: ${attendanceRecord?.getString("status")}, Date: ${attendanceRecord?.getDate("date")}")
+
+                    val attendanceDate = attendanceRecord?.getDate("date")
+                    if (attendanceDate != null && isSameDay(attendanceDate, specifiedDate) && canAttend(slot.startTime)) {
                         slot.attendanceDate = SimpleDateFormat("dd/MM/yyyy").format(attendanceDate)
                         slot.attendanceStatus = attendanceRecord.getString("status")
                         slotsWithAttendance.add(slot)
-                    } else {
-                        slot.attendanceStatus = "not yet!"
-                        slotsWithAttendance.add(slot)
+                        Log.d("AttendanceUpdate", "Slot ${slot.slotId} is eligible for attendance today.")
                     }
                 } else {
-                    Log.e("fetchAttendanceRecords", "Error fetching attendance record: ${task.error}")
+                    Log.e("AttendanceError", "Error fetching attendance record: ${task.error}")
                 }
 
-                processedCount++
-                // Kiểm tra xem đã xử lý xong tất cả slots chưa
-                if (slotsWithAttendance.size == slots.size) {
+                if (slotsWithAttendance.size == slots.size || slots.indexOf(slot) == slots.lastIndex) {
+                    Log.d("AttendanceCompletion", "Completed attendance check for all slots.")
                     completion(slotsWithAttendance)
                 }
             }
         }
+    }
+
+    fun isSameDay(date1: Date?, date2: Date?): Boolean {
+        if (date1 == null || date2 == null) return false
+
+        val fmt = SimpleDateFormat("yyyyMMdd")
+        return fmt.format(date1) == fmt.format(date2)
+    }
+
+    fun canAttend(startTime: String): Boolean {
+        val format = SimpleDateFormat("HH:mm", Locale.getDefault())
+        val start = format.parse(startTime)
+        val calendarStart = Calendar.getInstance().apply { time = start }
+
+        val calendarNow = Calendar.getInstance()
+        val calendarEnd = (calendarStart.clone() as Calendar).apply { add(Calendar.MINUTE, 30) }
+
+        val canAttend = calendarNow.after(calendarStart) && calendarNow.before(calendarEnd)
+        Log.d("canAttend", "Current time is within the attendance window: $canAttend (Start: $startTime, End: ${format.format(calendarEnd.time)})")
+        return canAttend
     }
 
     private fun sendSlotsDataToInterfaceFragment(slots: List<SlotInfo>? = null) {
