@@ -17,6 +17,7 @@ import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+import java.util.TimeZone
 
 class HomeActivity : AppCompatActivity() {
     private lateinit var binding: ActivityHomeBinding
@@ -393,15 +394,38 @@ class HomeActivity : AppCompatActivity() {
     }
 
     fun canAttend(startTime: String): Boolean {
-        val format = SimpleDateFormat("HH:mm", Locale.getDefault())
-        val start = format.parse(startTime)
-        val calendarStart = Calendar.getInstance().apply { time = start }
+        // Định dạng và múi giờ
+        val currentZone = TimeZone.getTimeZone("GMT+7")
+        val format = SimpleDateFormat("HH:mm", Locale.getDefault()).apply {
+            timeZone = currentZone
+        }
 
-        val calendarNow = Calendar.getInstance()
-        val calendarEnd = (calendarStart.clone() as Calendar).apply { add(Calendar.MINUTE, 30) }
+        // Lấy ngày hiện tại
+        val specifiedDate = Date()
+        val now = Calendar.getInstance(currentZone).apply {
+            time = specifiedDate
+        }
 
-        val canAttend = calendarNow.after(calendarStart) && calendarNow.before(calendarEnd)
-        Log.d("canAttend", "Current time is within the attendance window: $canAttend (Start: $startTime, End: ${format.format(calendarEnd.time)})")
+        // Phân tích giờ bắt đầu từ chuỗi startTime
+        val startTimeParsed = format.parse(startTime) ?: return false
+        val calendarStartTime = Calendar.getInstance(currentZone).apply {
+            time = startTimeParsed
+            set(Calendar.YEAR, now.get(Calendar.YEAR))
+            set(Calendar.MONTH, now.get(Calendar.MONTH))
+            set(Calendar.DAY_OF_MONTH, now.get(Calendar.DAY_OF_MONTH))
+        }
+
+        // Thiết lập khoảng thời gian cho phép điểm danh: từ 30 phút trước đến 30 phút sau startTime
+        val calendarStart = calendarStartTime.clone() as Calendar
+        calendarStart.add(Calendar.MINUTE, -30) // Mở cửa sớm 30 phút
+
+        val calendarEnd = calendarStartTime.clone() as Calendar
+        calendarEnd.add(Calendar.MINUTE, 30) // Đóng cửa 30 phút sau
+
+        // Kiểm tra xem thời gian hiện tại có nằm trong khoảng thời gian cho phép không
+        val canAttend = now.after(calendarStart) && now.before(calendarEnd)
+        Log.d("canAttend", "Current time is within the attendance window: $canAttend (Start: ${format.format(calendarStart.time)}, End: ${format.format(calendarEnd.time)})")
+
         return canAttend
     }
 
