@@ -23,12 +23,17 @@ class InterfaceFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         recyclerView = view.findViewById(R.id.my_recycler_view1)
         recyclerView.layoutManager = LinearLayoutManager(context)
-        slotAdapter = SlotAdapter(emptyList())
-        recyclerView.adapter = slotAdapter
 
-        // Nhận dữ liệu từ arguments và cập nhật RecyclerView
+        val listener = object : SlotAdapter.OnAttendButtonClickListener {
+            override fun onAttendClick(slot: SlotInfo, position: Int) {
+                (activity as? HomeActivity)?.attendSlot(slot)
+            }
+        }
+        slotAdapter = SlotAdapter(emptyList(), listener)
+        recyclerView.adapter = slotAdapter
         updateSlotsData()
     }
+
 
     // Phương thức này cho phép cập nhật dữ liệu slots từ bên ngoài
     fun updateSlotsData(slotsData: List<SlotInfo>? = null) {

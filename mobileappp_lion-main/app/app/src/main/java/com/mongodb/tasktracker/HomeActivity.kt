@@ -1,9 +1,15 @@
 package com.mongodb.tasktracker
 
+import android.content.pm.PackageManager
 import androidx.appcompat.app.AppCompatActivity
 import android.os.Bundle
 import android.util.Log
+import android.widget.Toast
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import com.google.android.gms.location.FusedLocationProviderClient
+import com.google.android.gms.location.LocationServices
 import com.mongodb.tasktracker.databinding.ActivityHomeBinding
 import com.mongodb.tasktracker.model.CourseInfo
 import com.mongodb.tasktracker.model.SlotInfo
@@ -18,6 +24,14 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
+import java.util.jar.Manifest
+import android.Manifest.permission.ACCESS_FINE_LOCATION
+import android.location.Location
+import androidx.appcompat.app.AlertDialog
+
+
+
+
 
 class HomeActivity : AppCompatActivity() {
     private lateinit var binding: ActivityHomeBinding
@@ -32,6 +46,8 @@ class HomeActivity : AppCompatActivity() {
     private var coursesInfo: List<CourseInfo>? = null
     private var slotsData: List<SlotInfo>? = null
     private var courseTitlesMap = mutableMapOf<String, String>()
+
+    private lateinit var fusedLocationClient: FusedLocationProviderClient
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,6 +64,8 @@ class HomeActivity : AppCompatActivity() {
         intent.getStringExtra("USER_EMAIL")?.let {
             fetchStudentData(it)
         }
+
+        fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
 
         binding.bottomNavigationView.setOnItemSelectedListener { item ->
             when (item.itemId) {
@@ -415,18 +433,87 @@ class HomeActivity : AppCompatActivity() {
             set(Calendar.DAY_OF_MONTH, now.get(Calendar.DAY_OF_MONTH))
         }
 
-        // Thiết lập khoảng thời gian cho phép điểm danh: từ 30 phút trước đến 30 phút sau startTime
+        // set the time for attendance
         val calendarStart = calendarStartTime.clone() as Calendar
-        calendarStart.add(Calendar.MINUTE, -30) // Mở cửa sớm 30 phút
+        calendarStart.add(Calendar.MINUTE, -30) // open early 30 minute
 
         val calendarEnd = calendarStartTime.clone() as Calendar
-        calendarEnd.add(Calendar.MINUTE, 30) // Đóng cửa 30 phút sau
+        calendarEnd.add(Calendar.MINUTE, 30) // close after 30 minute
 
         // Kiểm tra xem thời gian hiện tại có nằm trong khoảng thời gian cho phép không
         val canAttend = now.after(calendarStart) && now.before(calendarEnd)
         Log.d("canAttend", "Current time is within the attendance window: $canAttend (Start: ${format.format(calendarStart.time)}, End: ${format.format(calendarEnd.time)})")
 
         return canAttend
+    }
+
+    fun attendSlot(slotInfo: SlotInfo) {
+        if (ContextCompat.checkSelfPermission(this, ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, arrayOf(ACCESS_FINE_LOCATION), REQUEST_LOCATION_PERMISSION)
+            return
+        }
+
+        fusedLocationClient.lastLocation.addOnSuccessListener { location: Location? ->
+            location?.let {
+                confirmAttendance(slotInfo, it)
+            }
+        }.addOnFailureListener {
+            Toast.makeText(this, "Failed to get location.", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun confirmAttendance(slotInfo: SlotInfo, location: Location) {
+        val distanceInMeters = FloatArray(2)
+        val schoolLatitude = 37.422052
+        val schoolLongitude = -122.084150
+
+        Location.distanceBetween(location.latitude, location.longitude, schoolLatitude, schoolLongitude, distanceInMeters)
+
+        if (distanceInMeters[0] <= ALLOWED_DISTANCE_METERS) {
+            // Hiển thị AlertDialog để xác nhận
+            val builder = AlertDialog.Builder(this)
+            builder.setTitle("Xác nhận điểm danh")
+            builder.setMessage("Bạn có chắc chắn là đang ở khu vực điểm danh?")
+            builder.setPositiveButton("Attend") { dialog, which ->
+                updateAttendanceRecord(slotInfo, "present")
+                showResultDialog("Đã điểm danh thành công, vui lòng chạy lại ứng dụng")
+            }
+            builder.setNegativeButton("Cancel", { dialog, which -> dialog.dismiss() })
+            builder.show()
+        } else {
+            showResultDialog("Bạn không ở trong khu vực cho phép.")
+        }
+    }
+
+    private fun showResultDialog(message: String) {
+        AlertDialog.Builder(this).apply {
+            setTitle("Kết quả điểm danh")
+            setMessage(message)
+            setPositiveButton("Ok") { dialog, which -> dialog.dismiss() }
+            show()
+        }
+    }
+
+    private fun updateAttendanceRecord(slotInfo: SlotInfo, status: String) {
+        val attendanceCollection = app.currentUser()?.getMongoClient("mongodb-atlas")?.getDatabase("finalProject")?.getCollection("Attendance")
+        // Cập nhật trạng thái điểm danh trong collection `Attendance`
+        val query = Document("slotId", ObjectId(slotInfo.slotId)).append("studentId", ObjectId(studentId.toString()))
+        val update = Document("\$set", Document("status", status))
+
+        attendanceCollection?.updateOne(query, update)?.getAsync { result ->
+            if (result.isSuccess) {
+                Log.d("updateAttendance", "Attendance status updated successfully.")
+                Toast.makeText(this, "Attendance marked as $status.", Toast.LENGTH_SHORT).show()
+            } else {
+                Log.e("updateAttendance", "Failed to update attendance status.")
+                Toast.makeText(this, "Failed to mark attendance.", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    companion object {
+        private const val REQUEST_LOCATION_PERMISSION = 1
+        private const val ALLOWED_DISTANCE_METERS = 100f // Phạm vi cho phép là 100 mét
     }
 
     private fun sendSlotsDataToInterfaceFragment(slots: List<SlotInfo>? = null) {
