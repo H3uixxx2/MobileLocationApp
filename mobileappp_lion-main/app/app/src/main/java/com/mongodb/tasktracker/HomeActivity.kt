@@ -24,14 +24,9 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
-import java.util.jar.Manifest
 import android.Manifest.permission.ACCESS_FINE_LOCATION
 import android.location.Location
 import androidx.appcompat.app.AlertDialog
-
-
-
-
 
 class HomeActivity : AppCompatActivity() {
     private lateinit var binding: ActivityHomeBinding
@@ -464,8 +459,8 @@ class HomeActivity : AppCompatActivity() {
 
     private fun confirmAttendance(slotInfo: SlotInfo, location: Location) {
         val distanceInMeters = FloatArray(2)
-        val schoolLatitude = 37.422052
-        val schoolLongitude = -122.084150
+        val schoolLatitude = 37.422087
+        val schoolLongitude = -122.083880
 
         Location.distanceBetween(location.latitude, location.longitude, schoolLatitude, schoolLongitude, distanceInMeters)
 
@@ -504,11 +499,21 @@ class HomeActivity : AppCompatActivity() {
             if (result.isSuccess) {
                 Log.d("updateAttendance", "Attendance status updated successfully.")
                 Toast.makeText(this, "Attendance marked as $status.", Toast.LENGTH_SHORT).show()
+
+                // Cập nhật trạng thái điểm danh trong slotsData
+                updateLocalSlotData(slotInfo.slotId, status)
+
+                // Cập nhật UI
+                sendSlotsDataToInterfaceFragment(slotsData)
             } else {
                 Log.e("updateAttendance", "Failed to update attendance status.")
                 Toast.makeText(this, "Failed to mark attendance.", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    private fun updateLocalSlotData(slotId: String, status: String) {
+        slotsData?.find { it.slotId == slotId }?.attendanceStatus = status
     }
 
     companion object {
@@ -519,15 +524,20 @@ class HomeActivity : AppCompatActivity() {
     private fun sendSlotsDataToInterfaceFragment(slots: List<SlotInfo>? = null) {
         val dataToPass = slots ?: slotsData
         if (dataToPass != null) {
-            Log.d("HomeActivity", "Gửi dữ liệu Slots đến InterfaceFragment, số lượng: ${dataToPass.size}")
-            val interfaceFragment = InterfaceFragment().apply {
-                arguments = Bundle().apply {
-                    putSerializable("slotsData", ArrayList(dataToPass))
+            Log.d("HomeActivity", "Cập nhật dữ liệu Slots trong InterfaceFragment, số lượng: ${dataToPass.size}")
+            val interfaceFragment = supportFragmentManager.findFragmentById(R.id.frame_layout) as? InterfaceFragment
+            if (interfaceFragment != null) {
+                interfaceFragment.refreshSlotsData(dataToPass)
+            } else {
+                val newFragment = InterfaceFragment().apply {
+                    arguments = Bundle().apply {
+                        putSerializable("slotsData", ArrayList(dataToPass))
+                    }
                 }
+                replaceFragment(newFragment)
             }
-            replaceFragment(interfaceFragment)
         } else {
-            Log.e("HomeActivity", "Không có dữ liệu Slots để gửi đến InterfaceFragment.")
+            Log.e("HomeActivity", "Không có dữ liệu Slots để cập nhật InterfaceFragment.")
         }
     }
 

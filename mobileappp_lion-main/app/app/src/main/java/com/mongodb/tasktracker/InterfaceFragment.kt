@@ -34,12 +34,14 @@ class InterfaceFragment : Fragment() {
         updateSlotsData()
     }
 
+    fun refreshSlotsData(updatedSlots: List<SlotInfo>) {
+        slotAdapter.updateSlots(updatedSlots)
+    }
 
     // Phương thức này cho phép cập nhật dữ liệu slots từ bên ngoài
     fun updateSlotsData(slotsData: List<SlotInfo>? = null) {
         val data = slotsData ?: arguments?.getSerializable("slotsData") as? List<SlotInfo> ?: return
         slotAdapter.updateSlots(data)
     }
-
 }
 
