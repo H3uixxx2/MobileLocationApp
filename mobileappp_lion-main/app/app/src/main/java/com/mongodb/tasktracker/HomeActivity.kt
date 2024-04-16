@@ -27,6 +27,8 @@ import java.util.TimeZone
 import android.Manifest.permission.ACCESS_FINE_LOCATION
 import android.location.Location
 import androidx.appcompat.app.AlertDialog
+import androidx.lifecycle.ViewModelProvider
+import com.mongodb.tasktracker.model.SharedViewModel
 
 class HomeActivity : AppCompatActivity() {
     private lateinit var binding: ActivityHomeBinding
@@ -42,10 +44,14 @@ class HomeActivity : AppCompatActivity() {
     private var slotsData: List<SlotInfo>? = null
     private var courseTitlesMap = mutableMapOf<String, String>()
 
+    lateinit var viewModel: SharedViewModel
+
     private lateinit var fusedLocationClient: FusedLocationProviderClient
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        viewModel = ViewModelProvider(this).get(SharedViewModel::class.java)
 
         // Khởi tạo Realm
         Realm.init(this)
@@ -108,9 +114,10 @@ class HomeActivity : AppCompatActivity() {
                             val enrolledCourses = studentDocument.getList("enrolledCourses", ObjectId::class.java)
                             if (!enrolledCourses.isNullOrEmpty()) {
                                 Log.d("checked2", "Fetching courses data for enrolled courses: $enrolledCourses")
-                                fetchCoursesData(enrolledCourses)
-                                // Bây giờ ta sẽ lấy thông tin về các slot và term dựa trên danh sách khóa học và termId đã lấy được
-                                fetchCoursesAndSlots(enrolledCourses, termInfo.termId) // Cần định nghĩa fetchCoursesAndSlots để nhận termId
+                                fetchCoursesData(enrolledCourses) {
+                                    // Bây giờ ta sẽ lấy thông tin về các slot và term dựa trên danh sách khóa học và termId đã lấy được
+                                    fetchCoursesAndSlots(enrolledCourses, termInfo.termId)
+                                }
                             } else {
                                 Log.e("checked", "No enrolled courses found for user: $userEmail")
                             }
@@ -149,13 +156,14 @@ class HomeActivity : AppCompatActivity() {
     }
 
     //fetch Courses from data
-    private fun fetchCoursesData(courseIds: List<ObjectId>) {
+    private fun fetchCoursesData(courseIds: List<ObjectId>, onComplete: () -> Unit) {
         val mongoClient = app.currentUser()?.getMongoClient("mongodb-atlas")
         val database = mongoClient?.getDatabase("finalProject")
         val coursesCollection = database?.getCollection("Courses")
         val departmentsCollection = database?.getCollection("Departments")
 
         val coursesInfoTemp = mutableListOf<CourseInfo>()
+        var completedCount = 0  // Biến đếm để theo dõi số lượng khóa học đã xử lý
 
         courseIds.forEach { courseId ->
             coursesCollection?.findOne(Document("_id", courseId))?.getAsync { task ->
@@ -174,20 +182,25 @@ class HomeActivity : AppCompatActivity() {
                                 val departmentDocument = deptTask.get()
                                 val departmentName = departmentDocument?.getString("name") ?: "Unknown department"
 
-                                // Tạo và thêm đối tượng CourseInfo vào danh sách tạm thời
                                 coursesInfoTemp.add(CourseInfo(title, description, departmentName, credits))
-
-                                // Kiểm tra xem đã lấy đủ thông tin cho tất cả các khóa học hay chưa
-                                if (coursesInfoTemp.size == courseIds.size) {
-                                    coursesInfo = coursesInfoTemp
-                                    // Cập nhật UI hoặc thực hiện các bước tiếp theo tại đây nếu cần
-                                }
                             } else {
                                 Log.e("fetchCoursesData", "Error fetching department data: ${deptTask.error}")
+                            }
+
+                            // Kiểm tra xem đã hoàn thành tất cả các tasks hay chưa
+                            if (++completedCount == courseIds.size) {
+                                coursesInfo = coursesInfoTemp
+                                onComplete()  // Gọi callback khi tất cả các khóa học đã được xử lý
                             }
                         }
                     } else {
                         Log.e("fetchCoursesData", "Department ID not found for course: $title")
+
+                        // Tiếp tục kiểm tra nếu không có departmentId
+                        if (++completedCount == courseIds.size) {
+                            coursesInfo = coursesInfoTemp
+                            onComplete()  // Gọi callback khi tất cả các khóa học đã được xử lý
+                        }
                     }
                 } else {
                     Log.e("fetchCoursesData", "Error fetching course data: ${task.error}")
@@ -279,9 +292,9 @@ class HomeActivity : AppCompatActivity() {
                     val courseId = document.getObjectId("courseId").toString()
 
                     Log.d("SlotDetail", "Processing slot $slotId for courseId $courseId")
-
                     // Kiểm tra xem courseId có tồn tại trong courseTitlesMap không
                     if (courseTitlesMap.containsKey(courseId)) {
+
                         val courseTitle = courseTitlesMap[courseId]
                         // Log title tìm được từ map
                         Log.d("SlotDetail", "Found title for courseId $courseId: $courseTitle")
@@ -459,8 +472,8 @@ class HomeActivity : AppCompatActivity() {
 
     private fun confirmAttendance(slotInfo: SlotInfo, location: Location) {
         val distanceInMeters = FloatArray(2)
-        val schoolLatitude = 37.422087
-        val schoolLongitude = -122.083880
+        val schoolLatitude = 37.421938
+        val schoolLongitude = -122.083977
 
         Location.distanceBetween(location.latitude, location.longitude, schoolLatitude, schoolLongitude, distanceInMeters)
 
@@ -503,8 +516,14 @@ class HomeActivity : AppCompatActivity() {
                 // Cập nhật trạng thái điểm danh trong slotsData
                 updateLocalSlotData(slotInfo.slotId, status)
 
+                /*//cập nhật UI cho ShopFragment
+                addAttendanceToHistory(slotInfo, status)*/
+
                 // Cập nhật UI
                 sendSlotsDataToInterfaceFragment(slotsData)
+
+                /*//cập nhật ShopFragment
+                updateShopFragment()*/
             } else {
                 Log.e("updateAttendance", "Failed to update attendance status.")
                 Toast.makeText(this, "Failed to mark attendance.", Toast.LENGTH_SHORT).show()

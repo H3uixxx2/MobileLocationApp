@@ -7,9 +7,9 @@
     <item android:title="User"
         android:id="@+id/user"
         android:icon="@drawable/userinf"/>
-    <item android:title="Shop"
+    <item android:title="History"
         android:id="@+id/shop"
-        android:icon="@drawable/shop"/>
+        android:icon="@drawable/history"/>
     <item android:title="Gear"
         android:id="@+id/gear"
         android:icon="@drawable/gear"/>
