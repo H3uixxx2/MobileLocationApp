@@ -606,6 +606,8 @@ class HomeActivity : AppCompatActivity() {
 
                 blockChainsCollection?.updateOne(Document("studentId", ObjectId(studentId.toString())), pointAdjustment)?.getAsync { task ->
                     if (task.isSuccess) {
+                        // Fetch new blockchain data immediately
+                        fetchBlockchainData(studentId!!)
                         Log.d("updateBlockchainPoints", "Blockchain points updated successfully for status: $status")
                     } else {
                         Log.e("updateBlockchainPoints", "Failed to update points: ${task.error}")
