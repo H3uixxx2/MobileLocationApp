@@ -176,7 +176,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="100"
+            android:text="0"
             android:textSize="20dp"
             android:textStyle="bold"
             app:layout_constraintStart_toStartOf="@+id/quest"
@@ -200,7 +200,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="1323949"
+            android:text=""
             android:textSize="20dp"
             android:textStyle="bold"
             app:layout_constraintStart_toStartOf="@+id/pp"
@@ -220,11 +220,11 @@
             app:layout_constraintTop_toTopOf="@+id/rectangle_2" />
 
         <TextView
-            android:id="@+id/token_number"
+            android:id="@+id/lDTs_number"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:text="62385"
+            android:text=""
             android:textSize="20dp"
             android:textStyle="bold"
             app:layout_constraintEnd_toEndOf="@+id/textView17"

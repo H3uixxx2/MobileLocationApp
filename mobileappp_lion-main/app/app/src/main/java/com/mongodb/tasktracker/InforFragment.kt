@@ -33,14 +33,20 @@ class InforFragment : Fragment() {
         val nameTextView = view.findViewById<TextView>(R.id.name_data)
         val emailTextView = view.findViewById<TextView>(R.id.email_data)
         val departmentTextView = view.findViewById<TextView>(R.id.department_data)
+        val ppTextView = view.findViewById<TextView>(R.id.pp_number)
+        val ldtsTextView = view.findViewById<TextView>(R.id.lDTs_number)
 
         val name = arguments?.getString("name", "N/A")
         val email = arguments?.getString("email", "N/A")
         val department = arguments?.getString("department", "N/A")
+        val pp = arguments?.getInt("PP", 0)
+        val ldts = arguments?.getInt("LDTs", 0)
 
         nameTextView.text = name ?: "N/A"
         emailTextView.text = email ?: "N/A"
         departmentTextView.text = department ?: "N/A"
+        ppTextView.text = "${pp ?: 0}"
+        ldtsTextView.text = "${ldts ?: 0}"
 
         // Thiết lập RecyclerView
         recyclerView = view.findViewById(R.id.my_recycler_view)

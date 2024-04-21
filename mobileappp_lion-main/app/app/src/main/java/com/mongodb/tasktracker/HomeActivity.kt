@@ -26,6 +26,7 @@ import java.util.Locale
 import java.util.TimeZone
 import android.Manifest.permission.ACCESS_FINE_LOCATION
 import android.location.Location
+import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.ViewModelProvider
 import com.mongodb.tasktracker.model.SharedViewModel
@@ -38,6 +39,9 @@ class HomeActivity : AppCompatActivity() {
     private var studentEmail: String? = null
     private var departmentName: String? = null
     private var studentId: ObjectId? = null
+    private var blockchainPP: Int? = null
+    private var blockchainLDTs: Int? = null
+    private var addressWallet: String? = null
 
 
     private var coursesInfo: List<CourseInfo>? = null
@@ -90,13 +94,13 @@ class HomeActivity : AppCompatActivity() {
     private fun fetchStudentData(userEmail: String) {
         val mongoClient = app.currentUser()?.getMongoClient("mongodb-atlas")
         val database = mongoClient?.getDatabase("finalProject")
-        Log.d("checked", "Attempting to fetch student data for email: $userEmail")
+        Log.d("fetchStudentData", "Attempting to fetch student data for email: $userEmail")
 
         database?.getCollection("Students")?.findOne(Document("email", userEmail))?.getAsync { task ->
 
             if (task.isSuccess) {
                 val studentDocument = task.get()
-                Log.d("checked", "Successfully fetched student data: ${studentDocument?.toJson()}")
+                Log.d("fetchStudentData", "Successfully fetched student data: ${studentDocument?.toJson()}")
 
                 // Cập nhật thông tin sinh viên
                 studentName = studentDocument?.getString("name")
@@ -104,8 +108,13 @@ class HomeActivity : AppCompatActivity() {
                 val departmentId = studentDocument?.getObjectId("departmentId")
                 this.studentId = studentDocument?.getObjectId("_id")
 
+                // Gọi phương thức fetchBlockchainData ở đây nếu studentId khác null
+                this.studentId?.let {
+                    fetchBlockchainData(it)
+                }
+
                 if (departmentId != null) {
-                    Log.d("checked", "Fetching department data for ID: $departmentId")
+                    Log.d("fetchStudentData", "Fetching department data for ID: $departmentId")
                     fetchDepartmentData(departmentId)
                     // Sau khi lấy được departmentId, cần lấy termId tương ứng với department này
                     fetchCurrentTerm(departmentId) { termInfo ->
@@ -113,23 +122,23 @@ class HomeActivity : AppCompatActivity() {
                             // Lấy danh sách khóa học mà sinh viên đã đăng ký
                             val enrolledCourses = studentDocument.getList("enrolledCourses", ObjectId::class.java)
                             if (!enrolledCourses.isNullOrEmpty()) {
-                                Log.d("checked2", "Fetching courses data for enrolled courses: $enrolledCourses")
+                                Log.d("fetchStudentData", "Fetching courses data for enrolled courses: $enrolledCourses")
                                 fetchCoursesData(enrolledCourses) {
                                     // Bây giờ ta sẽ lấy thông tin về các slot và term dựa trên danh sách khóa học và termId đã lấy được
                                     fetchCoursesAndSlots(enrolledCourses, termInfo.termId)
                                 }
                             } else {
-                                Log.e("checked", "No enrolled courses found for user: $userEmail")
+                                Log.e("fetchStudentData", "No enrolled courses found for user: $userEmail")
                             }
                         } else {
-                            Log.e("checked1", "Unable to find current term for departmentId: $departmentId")
+                            Log.e("fetchStudentData", "Unable to find current term for departmentId: $departmentId")
                         }
                     }
                 } else {
-                    Log.e("checked", "Department ID not found for user: $userEmail")
+                    Log.e("fetchStudentData", "Department ID not found for user: $userEmail")
                 }
             } else {
-                Log.e("checked", "Error fetching student data: ${task.error}")
+                Log.e("fetchStudentData", "Error fetching student data: ${task.error}")
             }
         }
     }
@@ -147,10 +156,10 @@ class HomeActivity : AppCompatActivity() {
                 if (departmentDocument != null) {
                     departmentName = departmentDocument.getString("name")
                 } else {
-                    Log.e("HomeActivity", "Không tìm thấy phòng ban với ID: $departmentId")
+                    Log.e("fetchDepartmentData", "Không tìm thấy phòng ban với ID: $departmentId")
                 }
             } else {
-                Log.e("HomeActivity", "Lỗi khi truy vấn phòng ban: ${task.error}")
+                Log.e("fetchDepartmentData", "Lỗi khi truy vấn phòng ban: ${task.error}")
             }
         }
     }
@@ -209,6 +218,62 @@ class HomeActivity : AppCompatActivity() {
         }
     }
 
+    //truy vấn tới Collection BlockChains để get pp & ldts
+    private fun fetchBlockchainData(studentId: ObjectId) {
+        Log.d("fetchBlockchainData", "Fetching blockchain data for studentId: $studentId")
+
+        val mongoClient = app.currentUser()?.getMongoClient("mongodb-atlas")
+        val database = mongoClient?.getDatabase("finalProject")
+        val blockChainsCollection = database?.getCollection("BlockChains")
+
+        val query = Document("studentId", studentId)
+        Log.d("fetchBlockchainData", "Query used: $query")
+
+        blockChainsCollection?.findOne(query)?.getAsync { task ->
+            if (task.isSuccess) {
+                val blockchainDocument = task.get()
+                Log.d("fetchBlockchainData", "Blockchain data fetched successfully")
+
+                val pp = blockchainDocument?.getInteger("PP", 0) ?: 0
+                val lDTs = blockchainDocument?.getInteger("LDTs", 0) ?: 0
+                addressWallet = blockchainDocument?.getString("addressWallet") ?: "No address"
+
+                blockchainPP = pp
+                blockchainLDTs = lDTs
+                Log.d("fetchBlockchainData", "PP: $pp, LDTs: $lDTs")
+
+                // Cập nhật UI
+                runOnUiThread {
+                    updateBlockchainUI(pp, lDTs)
+                    sendBlockchainDataToInterfaceFragment()
+                }
+            } else {
+                Log.e("fetchBlockchainData", "Error fetching blockchain data: ${task.error}")
+            }
+        }
+    }
+
+    private fun updateBlockchainUI(pp: Int, ldts: Int) {
+        val inforFragment = supportFragmentManager.findFragmentByTag("InforFragment") as? InforFragment
+        if (inforFragment != null && inforFragment.isAdded && inforFragment.view != null) {
+            inforFragment.view?.findViewById<TextView>(R.id.pp_number)?.text = "PP: $pp"
+            inforFragment.view?.findViewById<TextView>(R.id.lDTs_number)?.text = "LDTs: $ldts"
+        } else {
+            Log.e("updateBlockchainUI", "Fragment not added or view not created")
+        }
+    }
+
+    private fun sendBlockchainDataToInterfaceFragment() {
+        val interfaceFragment = supportFragmentManager.findFragmentByTag("InterfaceFragment") as? InterfaceFragment
+        interfaceFragment?.let {
+            val args = Bundle().apply {
+                putString("addressWallet", addressWallet)
+            }
+            it.arguments = args
+            supportFragmentManager.beginTransaction().replace(R.id.frame_layout, it).commit()
+        }
+    }
+
     private fun checkAndPassCourses(coursesInfo: List<CourseInfo>, totalCourses: Int) {
         if (coursesInfo.size == totalCourses) {
             passCoursesToFragment(coursesInfo)
@@ -219,19 +284,24 @@ class HomeActivity : AppCompatActivity() {
         this.coursesInfo = coursesInfo
         // Cập nhật InforFragment với dữ liệu mới
         val inforFragment = supportFragmentManager.findFragmentByTag("InforFragment") as? InforFragment
-        inforFragment?.let {
-            it.arguments = Bundle().apply {
+        inforFragment?.let { fragment ->
+            // Đảm bảo rằng các thông tin khác cũng được cập nhật
+            val bundle = Bundle().apply {
                 putString("name", studentName ?: "N/A")
                 putString("email", studentEmail ?: "N/A")
                 putString("department", departmentName ?: "N/A")
                 putSerializable("courses", ArrayList(coursesInfo))
+                // Thêm thông tin blockchain vào bundle
+                putInt("PP", blockchainPP ?: 0)
+                putInt("LDTs", blockchainLDTs ?: 0)
             }
-            replaceFragment(it)
+            fragment.arguments = bundle
+            replaceFragment(fragment)
         }
     }
 
     private fun fetchCurrentTerm(departmentId: ObjectId, completion: (TermInfo?) -> Unit) {
-        Log.d("CheckTerm", "Starting to fetch current term with departmentId: $departmentId")
+        Log.d("fetchCurrentTerm", "Starting to fetch current term with departmentId: $departmentId")
         val mongoClient = app.currentUser()?.getMongoClient("mongodb-atlas")
         val database = mongoClient?.getDatabase("finalProject")
         val termsCollection = database?.getCollection("Terms")
@@ -243,12 +313,12 @@ class HomeActivity : AppCompatActivity() {
             Document("departments", departmentId)
         ))
 
-        Log.d("CheckTerm", "Query for current term: $query")
+        Log.d("fetchCurrentTerm", "Query for current term: $query")
 
         termsCollection?.findOne(query)?.getAsync { task ->
             if (task.isSuccess) {
                 val termDocument = task.get()
-                Log.d("CheckTerm", "Current term found: ${termDocument?.toJson()}")
+                Log.d("fetchCurrentTerm", "Current term found: ${termDocument?.toJson()}")
                 val termInfo = termDocument?.let { doc ->
                     TermInfo(
                         termId = doc.getObjectId("_id"),
@@ -260,7 +330,7 @@ class HomeActivity : AppCompatActivity() {
                 }
                 completion(termInfo)
             } else {
-                Log.e("CheckTerm", "Error fetching current term: ${task.error}")
+                Log.e("fetchCurrentTerm", "Error fetching current term: ${task.error}")
                 completion(null)
             }
         }
@@ -315,7 +385,7 @@ class HomeActivity : AppCompatActivity() {
                     slots.add(slotInfo) // Thêm slotInfo vào danh sách
                 }
 
-                Log.d("fetchCoursesAndSlots1", "Fetched slots: ${slots.size}")
+                Log.d("fetchCoursesAndSlots", "Fetched slots: ${slots.size}")
 
                 // Tiếp tục với việc lấy thông tin tòa nhà
                 fetchAttendanceRecordsForSlots(slots, termId) { slotsWithAttendance ->
@@ -353,10 +423,10 @@ class HomeActivity : AppCompatActivity() {
                     val roomDocument = task.get()
                     val building = roomDocument?.getString("building") ?: "Unknown"
                     updatedSlots.add(slot.copy(building = building))
-                    Log.d("Debugdepartment", "Building found for SlotID: ${slot.slotId} and TermID: $termId is $building")
+                    Log.d("fetchBuildingForSlots", "Building found for SlotID: ${slot.slotId} and TermID: $termId is $building")
                 } else {
                     updatedSlots.add(slot)
-                    Log.e("Debugdepartment", "Error fetching room data for SlotID: ${slot.slotId} and TermID: $termId: ${task.error}")
+                    Log.e("fetchBuildingForSlots", "Error fetching room data for SlotID: ${slot.slotId} and TermID: $termId: ${task.error}")
                 }
                 callbackCount++
                 if (callbackCount == slots.size) {
@@ -472,8 +542,8 @@ class HomeActivity : AppCompatActivity() {
 
     private fun confirmAttendance(slotInfo: SlotInfo, location: Location) {
         val distanceInMeters = FloatArray(2)
-        val schoolLatitude = 37.421938
-        val schoolLongitude = -122.083977
+        val schoolLatitude = 10.844808
+        val schoolLongitude = 106.837153
 
         Location.distanceBetween(location.latitude, location.longitude, schoolLatitude, schoolLongitude, distanceInMeters)
 
@@ -543,7 +613,7 @@ class HomeActivity : AppCompatActivity() {
     private fun sendSlotsDataToInterfaceFragment(slots: List<SlotInfo>? = null) {
         val dataToPass = slots ?: slotsData
         if (dataToPass != null) {
-            Log.d("HomeActivity", "Cập nhật dữ liệu Slots trong InterfaceFragment, số lượng: ${dataToPass.size}")
+            Log.d("sendSlotsDataToInterfaceFragment", "Cập nhật dữ liệu Slots trong InterfaceFragment, số lượng: ${dataToPass.size}")
             val interfaceFragment = supportFragmentManager.findFragmentById(R.id.frame_layout) as? InterfaceFragment
             if (interfaceFragment != null) {
                 interfaceFragment.refreshSlotsData(dataToPass)
@@ -556,26 +626,34 @@ class HomeActivity : AppCompatActivity() {
                 replaceFragment(newFragment)
             }
         } else {
-            Log.e("HomeActivity", "Không có dữ liệu Slots để cập nhật InterfaceFragment.")
+            Log.e("sendSlotsDataToInterfaceFragment", "Không có dữ liệu Slots để cập nhật InterfaceFragment.")
         }
     }
 
     private fun replaceFragment(fragment: Fragment) {
-        // Kiểm tra và cập nhật dữ liệu cho InterfaceFragment hoặc InforFragment nếu cần
-        if (fragment is InterfaceFragment && slotsData != null) {
-            fragment.arguments = Bundle().apply {
-                putSerializable("slotsData", ArrayList(slotsData))
-            }
-        } else if (fragment is InforFragment && coursesInfo != null) {
-            fragment.arguments = Bundle().apply {
-                putString("name", studentName ?: "N/A")
-                putString("email", studentEmail ?: "N/A")
-                putString("department", departmentName ?: "N/A")
-                putSerializable("courses", ArrayList(coursesInfo))
+        val args = Bundle().apply {
+            when (fragment) {
+                is InterfaceFragment -> {
+                    if (slotsData != null) {
+                        putSerializable("slotsData", ArrayList(slotsData))
+                    }
+                    putString("addressWallet", addressWallet ?: "No address")  // Truyền addressWallet cho InterfaceFragment
+                }
+                is InforFragment -> {
+                    if (coursesInfo != null) {
+                        putString("name", studentName ?: "N/A")
+                        putString("email", studentEmail ?: "N/A")
+                        putString("department", departmentName ?: "N/A")
+                        putSerializable("courses", ArrayList(coursesInfo))
+                        putInt("PP", blockchainPP ?: 0)  // Thêm thông tin blockchain PP
+                        putInt("LDTs", blockchainLDTs ?: 0)  // Thêm thông tin blockchain LDTs
+                    }
+                }
             }
         }
+        fragment.arguments = args
 
-        // Thực hiện thay thế Fragment
+        // Thực hiện thay thế Fragment trên UI
         supportFragmentManager.beginTransaction().apply {
             replace(R.id.frame_layout, fragment, fragment.javaClass.simpleName)
             commit()
