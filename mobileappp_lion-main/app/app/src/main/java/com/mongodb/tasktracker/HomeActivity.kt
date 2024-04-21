@@ -30,6 +30,8 @@ import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.ViewModelProvider
 import com.mongodb.tasktracker.model.SharedViewModel
+import java.math.BigDecimal
+import java.math.RoundingMode
 
 class HomeActivity : AppCompatActivity() {
     private lateinit var binding: ActivityHomeBinding
@@ -39,8 +41,8 @@ class HomeActivity : AppCompatActivity() {
     private var studentEmail: String? = null
     private var departmentName: String? = null
     private var studentId: ObjectId? = null
-    private var blockchainPP: Int? = null
-    private var blockchainLDTs: Int? = null
+    private var blockchainPP: Double? = null
+    private var blockchainLDTs: Double? = null
     private var addressWallet: String? = null
 
 
@@ -234,8 +236,18 @@ class HomeActivity : AppCompatActivity() {
                 val blockchainDocument = task.get()
                 Log.d("fetchBlockchainData", "Blockchain data fetched successfully")
 
-                val pp = blockchainDocument?.getInteger("PP", 0) ?: 0
-                val lDTs = blockchainDocument?.getInteger("LDTs", 0) ?: 0
+                val pp = blockchainDocument?.get("PP")?.let {
+                    when (it) {
+                        is Number -> BigDecimal(it.toDouble()).setScale(2, RoundingMode.HALF_EVEN).toDouble()
+                        else -> 0.0
+                    }
+                } ?: 0.0
+                val lDTs = blockchainDocument?.get("LDTs")?.let {
+                    when (it) {
+                        is Number -> BigDecimal(it.toDouble()).setScale(2, RoundingMode.HALF_EVEN).toDouble()
+                        else -> 0.0
+                    }
+                } ?: 0.0
                 addressWallet = blockchainDocument?.getString("addressWallet") ?: "No address"
 
                 blockchainPP = pp
@@ -253,7 +265,7 @@ class HomeActivity : AppCompatActivity() {
         }
     }
 
-    private fun updateBlockchainUI(pp: Int, ldts: Int) {
+    private fun updateBlockchainUI(pp: Double, ldts: Double) {
         val inforFragment = supportFragmentManager.findFragmentByTag("InforFragment") as? InforFragment
         if (inforFragment != null && inforFragment.isAdded && inforFragment.view != null) {
             inforFragment.view?.findViewById<TextView>(R.id.pp_number)?.text = "PP: $pp"
@@ -292,8 +304,8 @@ class HomeActivity : AppCompatActivity() {
                 putString("department", departmentName ?: "N/A")
                 putSerializable("courses", ArrayList(coursesInfo))
                 // Thêm thông tin blockchain vào bundle
-                putInt("PP", blockchainPP ?: 0)
-                putInt("LDTs", blockchainLDTs ?: 0)
+                putDouble("PP", blockchainPP ?: 0.0)
+                putDouble("LDTs", blockchainLDTs ?: 0.0)
             }
             fragment.arguments = bundle
             replaceFragment(fragment)
@@ -574,6 +586,8 @@ class HomeActivity : AppCompatActivity() {
 
     private fun updateAttendanceRecord(slotInfo: SlotInfo, status: String) {
         val attendanceCollection = app.currentUser()?.getMongoClient("mongodb-atlas")?.getDatabase("finalProject")?.getCollection("Attendance")
+        val blockChainsCollection = app.currentUser()?.getMongoClient("mongodb-atlas")?.getDatabase("finalProject")?.getCollection("BlockChains")
+
         // Cập nhật trạng thái điểm danh trong collection `Attendance`
         val query = Document("slotId", ObjectId(slotInfo.slotId)).append("studentId", ObjectId(studentId.toString()))
         val update = Document("\$set", Document("status", status))
@@ -583,19 +597,26 @@ class HomeActivity : AppCompatActivity() {
                 Log.d("updateAttendance", "Attendance status updated successfully.")
                 Toast.makeText(this, "Attendance marked as $status.", Toast.LENGTH_SHORT).show()
 
-                // Cập nhật trạng thái điểm danh trong slotsData
+                // Tính toán và cập nhật điểm
+                val pointAdjustment = if (status == "present") {
+                    Document("\$inc", Document("PP", 0.05).append("LDTs", 0.1))
+                } else {
+                    Document("\$inc", Document("PP", -0.075)) // Trừ điểm nếu không điểm danh đúng giờ
+                }
+
+                blockChainsCollection?.updateOne(Document("studentId", ObjectId(studentId.toString())), pointAdjustment)?.getAsync { task ->
+                    if (task.isSuccess) {
+                        Log.d("updateBlockchainPoints", "Blockchain points updated successfully for status: $status")
+                    } else {
+                        Log.e("updateBlockchainPoints", "Failed to update points: ${task.error}")
+                    }
+                }
+
+                // Cập nhật trạng thái điểm danh trong slotsData và UI
                 updateLocalSlotData(slotInfo.slotId, status)
-
-                /*//cập nhật UI cho ShopFragment
-                addAttendanceToHistory(slotInfo, status)*/
-
-                // Cập nhật UI
                 sendSlotsDataToInterfaceFragment(slotsData)
-
-                /*//cập nhật ShopFragment
-                updateShopFragment()*/
             } else {
-                Log.e("updateAttendance", "Failed to update attendance status.")
+                Log.e("updateAttendance", "Failed to update attendance status: ${result.error}")
                 Toast.makeText(this, "Failed to mark attendance.", Toast.LENGTH_SHORT).show()
             }
         }
@@ -645,8 +666,8 @@ class HomeActivity : AppCompatActivity() {
                         putString("email", studentEmail ?: "N/A")
                         putString("department", departmentName ?: "N/A")
                         putSerializable("courses", ArrayList(coursesInfo))
-                        putInt("PP", blockchainPP ?: 0)  // Thêm thông tin blockchain PP
-                        putInt("LDTs", blockchainLDTs ?: 0)  // Thêm thông tin blockchain LDTs
+                        putDouble("PP", blockchainPP ?: 0.0)  // Thêm thông tin blockchain PP
+                        putDouble("LDTs", blockchainLDTs ?: 0.0)  // Thêm thông tin blockchain LDTs
                     }
                 }
             }
