@@ -35,7 +35,7 @@ import java.math.RoundingMode
 
 class HomeActivity : AppCompatActivity() {
     private lateinit var binding: ActivityHomeBinding
-    private lateinit var app: App
+    lateinit var app: App
 
     private var studentName: String? = null
     private var studentEmail: String? = null
@@ -79,7 +79,7 @@ class HomeActivity : AppCompatActivity() {
                 R.id.userInterface -> replaceFragment(InterfaceFragment())
                 R.id.user -> replaceFragment(InforFragment())
                 R.id.gear -> replaceFragment(GearFragment())
-                R.id.shop -> replaceFragment(ShopFragment())
+                /*R.id.shop -> replaceFragment(ShopFragment())*/
                 else -> false
             }
             true
@@ -537,6 +537,8 @@ class HomeActivity : AppCompatActivity() {
         return canAttend
     }
 
+
+
     fun attendSlot(slotInfo: SlotInfo) {
         if (ContextCompat.checkSelfPermission(this, ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             ActivityCompat.requestPermissions(this, arrayOf(ACCESS_FINE_LOCATION), REQUEST_LOCATION_PERMISSION)
@@ -597,22 +599,20 @@ class HomeActivity : AppCompatActivity() {
                 Log.d("updateAttendance", "Attendance status updated successfully.")
                 Toast.makeText(this, "Attendance marked as $status.", Toast.LENGTH_SHORT).show()
 
-                // Tính toán và cập nhật điểm
-                val pointAdjustment = if (status == "present") {
-                    Document("\$inc", Document("PP", 0.05).append("LDTs", 0.1))
-                } else {
-                    Document("\$inc", Document("PP", -0.075)) // Trừ điểm nếu không điểm danh đúng giờ
-                }
-
-                blockChainsCollection?.updateOne(Document("studentId", ObjectId(studentId.toString())), pointAdjustment)?.getAsync { task ->
-                    if (task.isSuccess) {
-                        // Fetch new blockchain data immediately
-                        fetchBlockchainData(studentId!!)
-                        Log.d("updateBlockchainPoints", "Blockchain points updated successfully for status: $status")
-                    } else {
-                        Log.e("updateBlockchainPoints", "Failed to update points: ${task.error}")
+                if (status == "present") {
+                    // Only increment points if the status is "present"
+                    val pointAdjustment = Document("\$inc", Document("PP", 0.05).append("LDTs", 0.1))
+                    blockChainsCollection?.updateOne(Document("studentId", ObjectId(studentId.toString())), pointAdjustment)?.getAsync { task ->
+                        if (task.isSuccess) {
+                            Log.d("updateBlockchainPoints", "Blockchain points updated successfully for attending.")
+                        } else {
+                            Log.e("updateBlockchainPoints", "Failed to update points: ${task.error}")
+                        }
                     }
                 }
+
+                // Fetch new blockchain data to ensure UI is updated
+                fetchBlockchainData(studentId!!)
 
                 // Cập nhật trạng thái điểm danh trong slotsData và UI
                 updateLocalSlotData(slotInfo.slotId, status)

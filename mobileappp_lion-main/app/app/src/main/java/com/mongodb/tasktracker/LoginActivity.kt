@@ -109,27 +109,33 @@ class LoginActivity : AppCompatActivity() {
         val database = mongoClient.getDatabase("finalProject")
         val collection = database.getCollection("Users")
 
-        //tạo query với email
+        // Tạo query với email và role
         val query = Document("details.email", email)
 
         collection.findOne(query).getAsync { task ->
             if (task.isSuccess) {
                 val userDocument = task.get()
                 if (userDocument != null) {
-                    val storedPasswordHash = userDocument.getString("password")
-                    val result = BCrypt.verifyer().verify(password.toCharArray(), storedPasswordHash)
-                    if (result.verified) {
-                        Log.v("Login", "Đăng nhập thành công!")
-                        rememberAccount(email, password, rememberMeCheckBox.isChecked)
+                    val role = userDocument.getString("role")
+                    // Kiểm tra role là "student"
+                    if (role == "student") {
+                        val storedPasswordHash = userDocument.getString("password")
+                        val result = BCrypt.verifyer().verify(password.toCharArray(), storedPasswordHash)
+                        if (result.verified) {
+                            Log.v("Login", "Đăng nhập thành công!")
+                            rememberAccount(email, password, rememberMeCheckBox.isChecked)
 
-                        val homeIntent = Intent(this, HomeActivity::class.java).apply {
-                            putExtra("USER_EMAIL", email)
-                            putExtra("SHOW_INFOR_FRAGMENT", false)
+                            val homeIntent = Intent(this, HomeActivity::class.java).apply {
+                                putExtra("USER_EMAIL", email)
+                                putExtra("SHOW_INFOR_FRAGMENT", false)
+                            }
+                            startActivity(homeIntent)
+                            finish()
+                        } else {
+                            Toast.makeText(this, "Invalid email or password", Toast.LENGTH_LONG).show()
                         }
-                        startActivity(homeIntent)
-                        finish()
                     } else {
-                        Toast.makeText(this, "Invalid email or password", Toast.LENGTH_LONG).show()
+                        Toast.makeText(this, "Access denied: User is not a student", Toast.LENGTH_LONG).show()
                     }
                 } else {
                     Toast.makeText(this, "Invalid email or password", Toast.LENGTH_LONG).show()
